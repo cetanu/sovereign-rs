@@ -10,5 +10,6 @@ fn main() {
                 "envoy/api/v2/srds.proto",
             ],
             &["proto/"],
-        ).unwrap_or_else(|e| panic!("Failed to compile protos {:?}", e));
+        )
+        .unwrap_or_else(|e| panic!("Failed to compile protos {:?}", e));
 }

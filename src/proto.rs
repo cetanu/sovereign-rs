@@ -45,8 +45,6 @@ pub mod envoy {
             pub mod route {
                 tonic::include_proto!("envoy.api.v2.route");
             }
-
-
         }
     }
 

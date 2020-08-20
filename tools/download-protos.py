@@ -51,8 +51,11 @@ def add_namespace(package):
     proto = Path(f'envoy/api/v2/{package}.proto')
     with open(proto) as f:
         content = f.read().replace(
-            package,
-            f'{package}NS',
+            f'v2/{package}/',
+            f'v2/{package}NS/',
+        ).replace(
+            f' {package}.',
+            f' {package}NS.',
         )
     with open(proto, 'w+') as f:
         f.write(content)

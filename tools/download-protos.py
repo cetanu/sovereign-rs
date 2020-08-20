@@ -19,19 +19,20 @@ os.chdir(protos.absolute())
 
 
 def download(repo_name, repo_url, repo_root):
+    zipfile = f'{repo_name}.zip'
     if not Path(f'{repo_name}-master').exists():
-        with open('dl.zip', 'wb+') as f:
+        with open(zipfile, 'wb+') as f:
             for chunk in requests.get(repo_url, stream=True):
                 f.write(chunk)
 
-        with ZipFile(open('dl.zip', 'rb')) as z:
+        with ZipFile(open(zipfile, 'rb')) as z:
             z.extractall()
 
     if not Path(repo_root).exists():
         shutil.copytree(Path(f'{repo_name}-master/{repo_root}'), repo_root)
 
     shutil.rmtree(f'{repo_name}-master')
-    os.remove('dl.zip')
+    os.remove(zipfile)
 
 
 def add_namespace(package):
@@ -47,6 +48,14 @@ def add_namespace(package):
             )
         with open(file, 'w+') as f:
             f.write(content)
+    proto = Path(f'envoy/api/v2/{package}.proto')
+    with open(proto) as f:
+        content = f.read().replace(
+            package,
+            f'{package}NS',
+        )
+    with open(proto, 'w+') as f:
+        f.write(content)
     pkg.rename(new_pkg)
 
 

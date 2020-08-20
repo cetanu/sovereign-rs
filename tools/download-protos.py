@@ -11,28 +11,51 @@ packages = {
     'protoc-gen-validate': {'https://github.com/envoyproxy/protoc-gen-validate/archive/master.zip': 'validate'}
 }
 
-folder = Path('proto')
-if not folder.exists():
-    folder.mkdir()
-os.chdir(folder.absolute())
+protos = Path('proto')
 
-for name, opts in packages.items():
-    url, dir_name = tuple(*opts.items())
+def download():
+    if not protos.exists():
+        protos.mkdir()
+    os.chdir(protos.absolute())
 
-    if not Path(f'{name}-master').exists():
-        print(f'Downloading {name}', end='... ')
-        with open('dl.zip', 'wb+') as f:
-            for chunk in requests.get(url, stream=True):
-                f.write(chunk)
-        print('Done')
+    for name, opts in packages.items():
+        url, dir_name = tuple(*opts.items())
 
-        print('Extracting', end='... ')
-        with ZipFile(open('dl.zip', 'rb')) as z:
-            z.extractall()
-        print('Done')
+        if not Path(f'{name}-master').exists():
+            print(f'Downloading {name}', end='... ')
+            with open('dl.zip', 'wb+') as f:
+                for chunk in requests.get(url, stream=True):
+                    f.write(chunk)
+            print('Done')
 
-    if not Path(dir_name).exists():
-        shutil.copytree(Path(f'{name}-master/{dir_name}'), dir_name)
+            print('Extracting', end='... ')
+            with ZipFile(open('dl.zip', 'rb')) as z:
+                z.extractall()
+            print('Done')
 
-    shutil.rmtree(f'{name}-master')
-    os.remove('dl.zip')
+        if not Path(dir_name).exists():
+            shutil.copytree(Path(f'{name}-master/{dir_name}'), dir_name)
+
+        shutil.rmtree(f'{name}-master')
+        os.remove('dl.zip')
+
+
+def add_namespace(package):
+    pkg = protos.joinpath(Path(f'envoy/api/v2/{package}'))
+    new_pkg = protos.joinpath(Path(f'envoy/api/v2/{package}NS'))
+    if new_pkg.exists() and not pkg.exists():
+        return
+    for file in pkg.iterdir():
+        with open(file) as f:
+            content = f.read().replace(
+                f'package envoy.api.v2.{package};',
+                f'package envoy.api.v2.{package}NS;',
+            )
+        with open(file, 'w+') as f:
+            f.write(content)
+    pkg.rename(new_pkg)
+
+
+download()
+add_namespace('cluster')
+add_namespace('listener')

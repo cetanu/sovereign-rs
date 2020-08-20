@@ -1,8 +1,9 @@
 import os
+import shutil
 import requests
+import concurrent.futures
 from zipfile import ZipFile
 from pathlib import Path
-import shutil
 
 packages = {
     'data-plane-api': {'https://github.com/envoyproxy/data-plane-api/archive/master.zip': 'envoy'},
@@ -12,37 +13,30 @@ packages = {
 }
 
 protos = Path('proto')
+if not protos.exists():
+    protos.mkdir()
+os.chdir(protos.absolute())
 
-def download():
-    if not protos.exists():
-        protos.mkdir()
-    os.chdir(protos.absolute())
 
-    for name, opts in packages.items():
-        url, dir_name = tuple(*opts.items())
+def download(repo_name, repo_url, repo_root):
+    if not Path(f'{repo_name}-master').exists():
+        with open('dl.zip', 'wb+') as f:
+            for chunk in requests.get(repo_url, stream=True):
+                f.write(chunk)
 
-        if not Path(f'{name}-master').exists():
-            print(f'Downloading {name}', end='... ')
-            with open('dl.zip', 'wb+') as f:
-                for chunk in requests.get(url, stream=True):
-                    f.write(chunk)
-            print('Done')
+        with ZipFile(open('dl.zip', 'rb')) as z:
+            z.extractall()
 
-            print('Extracting', end='... ')
-            with ZipFile(open('dl.zip', 'rb')) as z:
-                z.extractall()
-            print('Done')
+    if not Path(repo_root).exists():
+        shutil.copytree(Path(f'{repo_name}-master/{repo_root}'), repo_root)
 
-        if not Path(dir_name).exists():
-            shutil.copytree(Path(f'{name}-master/{dir_name}'), dir_name)
-
-        shutil.rmtree(f'{name}-master')
-        os.remove('dl.zip')
+    shutil.rmtree(f'{repo_name}-master')
+    os.remove('dl.zip')
 
 
 def add_namespace(package):
-    pkg = protos.joinpath(Path(f'envoy/api/v2/{package}'))
-    new_pkg = protos.joinpath(Path(f'envoy/api/v2/{package}NS'))
+    pkg = Path(f'envoy/api/v2/{package}')
+    new_pkg = Path(f'envoy/api/v2/{package}NS')
     if new_pkg.exists() and not pkg.exists():
         return
     for file in pkg.iterdir():
@@ -56,6 +50,14 @@ def add_namespace(package):
     pkg.rename(new_pkg)
 
 
-download()
+with concurrent.futures.ThreadPoolExecutor(max_workers=len(packages)) as executor:
+    for name, opts in packages.items():
+        url, dir_name = tuple(*opts.items())
+        print(f'Downloading {dir_name}')
+        executor.submit(
+            download,
+            name, url, dir_name
+        )
+
 add_namespace('cluster')
 add_namespace('listener')

@@ -1,0 +1,34 @@
+[package]
+name = "sovereign-rs"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+axum = "0.5"
+tokio = { version = "1.21", features = ["full"] }
+hyper = { version = "0.14", features = ["full"] }
+tower = "0.4"
+dashmap = "5.4"
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+tonic = { version = "0.9" }
+prost = "0.11"
+prost-types = "0.11"
+
+pyo3 = { version = "0.19", features = ["extension-module"] }
+
+config = "0.13"
+
+[build-dependencies]
+tonic-build = "0.8"
+regex = "1.5"
+zip = "0.6"
+rayon = "1.5"
+fs_extra = "1.2"
+reqwest = { version = "0.11", features = ["json", "blocking"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

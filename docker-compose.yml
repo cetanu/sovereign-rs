@@ -1,0 +1,32 @@
+
+version: '2.3'
+
+services:
+  sovereign:
+    container_name: sovereign
+    build:
+      context: .
+      dockerfile: containers/Dockerfile.sovereign
+    ports:
+      - 80:8070
+    expose:
+      - 80
+  
+  envoy:
+    container_name: envoy
+    build:
+      context: containers
+      dockerfile: Dockerfile.envoy
+    links:
+      - sovereign
+    ports:
+      - 9901:9901
+    expose:
+      - 9901
+    environment:
+      ENVOY_UID: '0'
+      ENVOY_GID: '0'
+      ENVOY_LOGLEVEL: info
+      ENVOY_CONFIG: /etc/envoy.yaml
+      ENVOY_ZONE: us-east-1
+

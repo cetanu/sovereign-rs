@@ -11,9 +11,11 @@ use serde_json::Value as JsonValue;
 
 use tokio::sync::watch::{self, Receiver, Sender};
 
+use sovereign_rs::config::Settings;
+
 struct State {
-    a: DashMap<String, String>,
-    ch: Receiver<JsonValue>,
+    shared: DashMap<String, String>,
+    context: Receiver<JsonValue>,
 }
 
 #[derive(Serialize)]
@@ -33,11 +35,26 @@ async fn discovery(Path((version, resource)): Path<(String, String)>) -> Json<Di
 
 #[tokio::main]
 async fn main() {
+    let settings = match Settings::new() {
+        Ok(s) => s,
+        Err(e) => {
+            panic!("Could not load config: {e}")
+        }
+    };
+    for source in settings.sources.iter() {
+        let val = source.get();
+        match val {
+            Ok(s) => println!("{s}"),
+            Err(e) => panic!("Failed to get from source: {e}"),
+        }
+    }
+
     let (_tx, rx) = watch::channel(json!({"hello": "foo"}));
     let state = Arc::new(State {
-        a: DashMap::new(),
-        ch: rx,
+        shared: DashMap::new(),
+        context: rx,
     });
+
     let app = Router::new()
         .route("/:version/*resource", post(discovery))
         .layer(Extension(state));

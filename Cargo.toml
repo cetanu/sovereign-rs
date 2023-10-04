@@ -19,7 +19,7 @@ tonic = { version = "0.9" }
 prost = "0.11"
 prost-types = "0.11"
 
-pyo3 = { version = "0.19", features = ["extension-module"] }
+pyo3 = { version = "0.19", features = ["auto-initialize"] }
 
 config = "0.13"
 

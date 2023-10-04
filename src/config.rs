@@ -5,7 +5,7 @@ use std::env;
 use std::path::PathBuf;
 
 #[derive(Deserialize)]
-struct XdsTemplate {
+pub struct XdsTemplate {
     path: PathBuf,
     scope: String,
     version: String,
@@ -13,9 +13,9 @@ struct XdsTemplate {
 }
 
 #[derive(Deserialize)]
-struct Settings {
-    templates: Vec<XdsTemplate>,
-    sources: Vec<Source>,
+pub struct Settings {
+    pub templates: Vec<XdsTemplate>,
+    pub sources: Vec<Source>,
 }
 
 impl Settings {

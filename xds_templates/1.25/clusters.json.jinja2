@@ -1,0 +1,15 @@
+[
+    {% for instance in instances %}
+    {
+        "cluster_name": "{{ instance.parameters.service_name }}_{{ instance.parameters.resource_name }}",
+        "hosts": [
+            {% for host in instance.parameters.upstream_address %}
+                {
+                    "address": "{{ host.address }}",
+                    "port": "{{ host.port|default(443) }}"
+                }{% if loop.last != true %},{% endif %}
+            {% endfor %}
+        ]
+    }{% if loop.last != true %},{% endif %}
+    {% endfor %}
+]

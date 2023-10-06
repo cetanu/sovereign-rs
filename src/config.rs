@@ -2,14 +2,29 @@ use crate::sources::Source;
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 use std::env;
+use std::io::prelude::*;
+use std::io::BufReader;
 use std::path::PathBuf;
 
 #[derive(Deserialize)]
 pub struct XdsTemplate {
     path: PathBuf,
-    scope: String,
-    version: String,
-    priority: Option<u8>,
+    envoy_version: String,
+    resource_type: String,
+}
+
+impl XdsTemplate {
+    pub fn name(&self) -> String {
+        format!("{}/{}", self.envoy_version, self.resource_type)
+    }
+
+    pub fn source(&self) -> std::io::Result<String> {
+        let file = std::fs::File::open(&self.path)?;
+        let mut reader = BufReader::new(file);
+        let mut content = String::new();
+        reader.read_to_string(&mut content)?;
+        Ok(content)
+    }
 }
 
 #[derive(Deserialize)]

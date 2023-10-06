@@ -23,6 +23,9 @@ pyo3 = { version = "0.19", features = ["auto-initialize"] }
 
 config = "0.13"
 
+url = {version = "2.4", features = ["serde"]}
+minijinja = {version="1.0", features = ["loader"]}
+
 [build-dependencies]
 tonic-build = "0.8"
 regex = "1.5"

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
+use xxhash_rust::xxh64::xxh64;
 
 #[derive(Serialize)]
 pub struct DiscoveryResponse {
@@ -10,9 +11,10 @@ pub struct DiscoveryResponse {
 
 impl DiscoveryResponse {
     pub fn new(resources: JsonValue) -> Self {
+        let hash = xxh64(resources.to_string().as_bytes(), 0);
         Self {
             resources,
-            version_info: "0".to_string(),
+            version_info: hash.to_string(),
         }
     }
 }
@@ -63,6 +65,20 @@ pub struct DiscoveryRequest {
 }
 
 impl DiscoveryRequest {
+    pub fn new() -> Self {
+        Self {
+            node: Node {
+                id: None,
+                cluster: "example".to_string(),
+                metadata: HashMap::new(),
+                build_version: Some("1.25.0".to_string()),
+                locality: None,
+                user_agent_build_version: None,
+            },
+            version_info: "0".to_string(),
+            resource_names: vec![],
+        }
+    }
     pub fn envoy_version(&self) -> String {
         if let Some(v) = &self.node.build_version {
             return v.to_string();

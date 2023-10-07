@@ -1,16 +1,18 @@
 use pyo3::prelude::*;
+use reqwest::blocking::Client;
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use std::error::Error;
+use std::io::prelude::*;
+use std::io::BufReader;
 use std::path::PathBuf;
-use url::Url;
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", content = "config", rename_all = "lowercase")]
 pub enum Source {
     Inline { data: JsonValue },
     Python { code: String },
-    Http { url: Url },
+    Http { url: String },
     File { path: PathBuf },
 }
 
@@ -29,8 +31,17 @@ impl Source {
                     .extract::<String>()
                     .expect("Could not parse main function return value as a string")
             })),
-            Source::Http { url } => todo!(),
-            Source::File { path } => todo!(),
+            Source::Http { url } => {
+                let client = Client::new();
+                Ok(client.get(url).send()?.text()?)
+            }
+            Source::File { path } => {
+                let file = std::fs::File::open(&path)?;
+                let mut reader = BufReader::new(file);
+                let mut content = String::new();
+                reader.read_to_string(&mut content)?;
+                Ok(content)
+            }
         }
     }
 }

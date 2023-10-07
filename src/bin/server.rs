@@ -10,6 +10,7 @@ use dashmap::DashMap;
 use minijinja::{context, Environment, Template};
 use serde_json::json;
 use serde_json::Value as JsonValue;
+use sovereign_rs::sources::Source;
 use tokio::sync::watch::{self, Receiver};
 use tokio::time::{sleep, Duration};
 
@@ -73,14 +74,45 @@ async fn discovery(
                 })
                 .unwrap()
         });
-        let body = measure!("json", { serde_json::from_str(&content).unwrap() });
-        return Ok(Json(DiscoveryResponse::new(body)));
+        let deser = measure!("json", { serde_json::from_str(&content) });
+        match deser {
+            Ok(body) => {
+                let response = measure!("hash", { DiscoveryResponse::new(body) });
+                Ok(Json(response))
+            }
+            Err(e) => {
+                println!("Failed to deserialize content:");
+                for (idx, line) in content.split("\n").into_iter().enumerate() {
+                    println!("{idx}: {line}");
+                }
+                panic!("{e}")
+            }
+        }
     } else {
         return Err(Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body("No configuration found for this Envoy version + resource type".to_string())
             .unwrap());
-    };
+    }
+}
+
+fn poll_sources(sources: &[Source]) -> JsonValue {
+    let mut ret = json! {[]};
+    for source in sources.iter() {
+        let val = measure!("polling", { source.get() });
+        if let Ok(s) = val {
+            if let Ok(json_value) = serde_json::from_str::<JsonValue>(&s) {
+                if let Some(s) = ret.as_array_mut() {
+                    if let Some(instances) = json_value.as_array() {
+                        s.extend(instances.clone());
+                    }
+                }
+            }
+        } else {
+            panic!("Failed to get from source");
+        }
+    }
+    ret
 }
 
 #[tokio::main]
@@ -92,31 +124,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let (tx, rx) = watch::channel(json!([]));
+    let (tx, rx) = watch::channel(poll_sources(&settings.sources));
     tokio::spawn(async move {
         loop {
-            for source in settings.sources.iter() {
-                let val = source.get();
-                match val {
-                    Ok(s) => {
-                        measure!("polling", {
-                            if let Ok(json_value) = serde_json::from_str(&s) {
-                                let _ = tx.send(json_value);
-                            }
-                        })
-                    }
-                    Err(e) => println!("Failed to get from source: {e}"),
-                }
-            }
             sleep(Duration::from_secs(30)).await;
+            let sources = poll_sources(&settings.sources);
+            _ = tx.send(sources);
         }
     });
 
     let mut env = Environment::new();
 
     for template in settings.templates.iter() {
-        env.add_template_owned(template.name(), template.source()?)?;
-        println!("Added template: {}", template.name());
+        let s = format!("Added template: {}", template.name());
+        measure!(s.as_str(), {
+            env.add_template_owned(template.name(), template.source()?)?
+        });
     }
 
     let state = Arc::new(State {
@@ -130,6 +153,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(Extension(state));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8070));
+    println!("Starting server");
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await?;

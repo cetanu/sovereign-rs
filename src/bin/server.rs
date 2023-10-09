@@ -7,10 +7,10 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
 use dashmap::DashMap;
-use minijinja::{context, Environment, Template};
-use serde_json::json;
+use minijinja::{context, Environment, Template, Value as JinjaValue};
 use serde_json::Value as JsonValue;
-use sovereign_rs::sources::Source;
+use sovereign_rs::context::{poll_context, Parsed};
+use sovereign_rs::sources::poll_sources;
 use tokio::sync::watch::{self, Receiver};
 use tokio::time::{sleep, Duration};
 
@@ -20,10 +20,14 @@ use sovereign_rs::types::{DiscoveryRequest, DiscoveryResponse};
 struct State<'a> {
     _shared: DashMap<String, String>,
     instances: Receiver<JsonValue>,
+    context: Receiver<JinjaValue>,
     env: Environment<'a>,
 }
 
 impl<'a> State<'a> {
+    // TODO: figure out:
+    // 1. How to choose json OR yaml
+    // 2. How to choose maybe a python script, which passes in context to a method
     fn template(&'a self, envoy_version: String, resource_type: &str) -> Option<Template<'a, 'a>> {
         // Incrementally walk the semantic version to find a template
         let mut octets = envoy_version.split('.').collect::<Vec<_>>();
@@ -66,11 +70,15 @@ async fn discovery(
 
     if let Some(template) = templ {
         let instances = measure!("sources", { state.instances.borrow().clone() });
+
+        let ctx = state.context.borrow().clone();
+
         let content = measure!("render", {
             template
                 .render(context! {
                     instances => instances,
                     discovery_request => payload,
+                    ..ctx
                 })
                 .unwrap()
         });
@@ -96,25 +104,6 @@ async fn discovery(
     }
 }
 
-fn poll_sources(sources: &[Source]) -> JsonValue {
-    let mut ret = json! {[]};
-    for source in sources.iter() {
-        let val = measure!("polling", { source.get() });
-        if let Ok(s) = val {
-            if let Ok(json_value) = serde_json::from_str::<JsonValue>(&s) {
-                if let Some(s) = ret.as_array_mut() {
-                    if let Some(instances) = json_value.as_array() {
-                        s.extend(instances.clone());
-                    }
-                }
-            }
-        } else {
-            panic!("Failed to get from source");
-        }
-    }
-    ret
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let settings = match Settings::new() {
@@ -124,12 +113,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let (tx, rx) = watch::channel(poll_sources(&settings.sources));
+    let (sources_tx, sources_rx) = watch::channel(poll_sources(&settings.sources));
     tokio::spawn(async move {
         loop {
             sleep(Duration::from_secs(30)).await;
             let sources = poll_sources(&settings.sources);
-            _ = tx.send(sources);
+            _ = sources_tx.send(sources);
+        }
+    });
+
+    let (context_tx, context_rx) = watch::channel(poll_context(&settings.template_context));
+    tokio::spawn(async move {
+        loop {
+            sleep(Duration::from_secs(30)).await;
+            let ctx = poll_context(&settings.template_context);
+            _ = context_tx.send(ctx);
         }
     });
 
@@ -144,7 +142,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let state = Arc::new(State {
         _shared: DashMap::new(),
-        instances: rx,
+        instances: sources_rx,
+        context: context_rx,
         env,
     });
 

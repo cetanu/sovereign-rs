@@ -1,6 +1,8 @@
+use crate::context::TemplateContext;
 use crate::sources::Source;
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::env;
 use std::io::prelude::*;
 use std::io::BufReader;
@@ -31,6 +33,7 @@ impl XdsTemplate {
 pub struct Settings {
     pub templates: Vec<XdsTemplate>,
     pub sources: Vec<Source>,
+    pub template_context: HashMap<String, TemplateContext>,
 }
 
 impl Settings {

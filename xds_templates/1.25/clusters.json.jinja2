@@ -46,6 +46,10 @@
         }
     },
 
+    {
+        "test": "{{ name.headers.Foo }}"
+    },
+
     {%- for instance in instances -%}
     {
         "cluster_name": "{{ instance.parameters.service_name }}_{{ instance.parameters.resource_name }}",

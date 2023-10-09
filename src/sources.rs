@@ -1,7 +1,8 @@
 use pyo3::prelude::*;
 use reqwest::blocking::Client;
 use serde::Deserialize;
-use serde_json::Value as JsonValue;
+use serde_json::{json, Value as JsonValue};
+use std::collections::HashMap;
 use std::error::Error;
 use std::io::prelude::*;
 use std::io::BufReader;
@@ -44,4 +45,23 @@ impl Source {
             }
         }
     }
+}
+
+pub fn poll_sources(sources: &[Source]) -> JsonValue {
+    let mut ret = json! {[]};
+    for source in sources.iter() {
+        let val = source.get();
+        if let Ok(s) = val {
+            if let Ok(json_value) = serde_json::from_str::<JsonValue>(&s) {
+                if let Some(s) = ret.as_array_mut() {
+                    if let Some(instances) = json_value.as_array() {
+                        s.extend(instances.clone());
+                    }
+                }
+            }
+        } else {
+            panic!("Failed to get from source");
+        }
+    }
+    ret
 }

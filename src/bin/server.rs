@@ -64,7 +64,7 @@ async fn discovery(
     Json(payload): Json<DiscoveryRequest>,
     Extension(state): Extension<Arc<State<'_>>>,
 ) -> Result<Json<DiscoveryResponse>, impl IntoResponse> {
-    let (_, resource_type) = resource.split_once(":").unwrap();
+    let (_, resource_type) = resource.split_once(':').unwrap();
     let version = measure!("envoy version", { payload.envoy_version() });
     let templ = measure!("template", { state.template(version, resource_type) });
 
@@ -90,17 +90,17 @@ async fn discovery(
             }
             Err(e) => {
                 println!("Failed to deserialize content:");
-                for (idx, line) in content.split("\n").into_iter().enumerate() {
+                for (idx, line) in content.split('\n').enumerate() {
                     println!("{idx}: {line}");
                 }
                 panic!("{e}")
             }
         }
     } else {
-        return Err(Response::builder()
+        Err(Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body("No configuration found for this Envoy version + resource type".to_string())
-            .unwrap());
+            .unwrap())
     }
 }
 

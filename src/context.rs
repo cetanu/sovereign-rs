@@ -36,11 +36,11 @@ pub enum Parsed {
     Structured(JsonValue),
 }
 
-impl Into<JinjaValue> for Parsed {
-    fn into(self) -> JinjaValue {
-        match self {
-            Self::Text(text) => JinjaValue::from_safe_string(text),
-            Self::Structured(structured) => JinjaValue::from_serializable(&structured),
+impl From<Parsed> for JinjaValue {
+    fn from(val: Parsed) -> Self {
+        match val {
+            Parsed::Text(text) => JinjaValue::from_safe_string(text),
+            Parsed::Structured(structured) => JinjaValue::from_serializable(&structured),
         }
     }
 }
@@ -165,8 +165,7 @@ impl TemplateContext {
 
 pub fn poll_context(ctx: &HashMap<String, TemplateContext>) -> JinjaValue {
     let map: HashMap<String, Parsed> = ctx
-        .clone()
-        .into_iter()
+        .iter()
         .map(|(k, v)| (k.to_string(), v.load().unwrap()))
         .collect();
     JinjaValue::from(map)

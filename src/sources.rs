@@ -22,7 +22,7 @@ impl Source {
         match self {
             Source::Inline { data } => Ok(data.to_string()),
             Source::Python { code } => Ok(Python::with_gil(|py| {
-                let module = PyModule::from_code(py, &code, "file.py", "module")
+                let module = PyModule::from_code(py, code, "file.py", "module")
                     .expect("Could not parse python code");
                 module
                     .getattr("main")
@@ -37,7 +37,7 @@ impl Source {
                 Ok(client.get(url).send()?.text()?)
             }
             Source::File { path } => {
-                let file = std::fs::File::open(&path)?;
+                let file = std::fs::File::open(path)?;
                 let mut reader = BufReader::new(file);
                 let mut content = String::new();
                 reader.read_to_string(&mut content)?;

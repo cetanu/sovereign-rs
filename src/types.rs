@@ -81,9 +81,9 @@ impl DiscoveryRequest {
     }
     pub fn envoy_version(&self) -> String {
         if let Some(v) = &self.node.build_version {
-            return v.to_string();
+            v.to_string()
         } else if let Some(v) = &self.node.user_agent_build_version {
-            return v.version.to_string();
+            v.version.to_string()
         } else {
             panic!("No envoy version")
         }

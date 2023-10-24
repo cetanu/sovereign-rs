@@ -13,10 +13,16 @@ use serde_json::Value as YamlValue;
 
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "lowercase")]
-enum Format {
+pub enum DeserializeAs {
     Json,
     Yaml,
     Plaintext,
+}
+
+impl Default for DeserializeAs {
+    fn default() -> Self {
+        Self::Json
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -78,7 +84,8 @@ where
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub struct TemplateContext {
-    deserialize_as: Format,
+    #[serde(default)]
+    deserialize_as: DeserializeAs,
     data_source: DataSource,
 }
 
@@ -138,15 +145,15 @@ impl TemplateContext {
         };
 
         let parsed = match &self.deserialize_as {
-            Format::Json => {
+            DeserializeAs::Json => {
                 let json: JsonValue = serde_json::from_slice(&data)?;
                 Parsed::Structured(json)
             }
-            Format::Yaml => {
+            DeserializeAs::Yaml => {
                 let yaml: YamlValue = serde_yaml::from_slice(&data)?;
                 Parsed::Structured(yaml)
             }
-            Format::Plaintext => {
+            DeserializeAs::Plaintext => {
                 let text = String::from_utf8(data)?;
                 Parsed::Text(text)
             }

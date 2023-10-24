@@ -1,7 +1,12 @@
 templates:
-  - path: xds_templates/1.25/clusters.json.jinja2
+  - path: xds_templates/1.25/clusters.yaml.jinja2
     resource_type: clusters
     envoy_version: '1.25'
+    deserialize_as: yaml
+  - path: xds_templates/1.25/routes.py
+    resource_type: routes
+    envoy_version: '1.25'
+    call_python: true
 
 sources:
   items:
@@ -21,7 +26,7 @@ sources:
 template_context:
   interval: 30
   items:
-    name:
+    httpbin_response:
       deserialize_as: json
       data_source:
         http:

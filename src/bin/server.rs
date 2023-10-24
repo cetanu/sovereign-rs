@@ -1,48 +1,46 @@
-use std::net::SocketAddr;
-use std::sync::Arc;
-
+use axum::body::{Bytes, Full};
 use axum::extract::{Extension, Path};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
-use minijinja::{context, Environment, Template, Value as JinjaValue};
-use serde_json::json;
-use sovereign_rs::context::poll_context;
+use dashmap::DashMap;
+use minijinja::{context, Environment, Value as JinjaValue};
+use serde_json::{json, Value as JsonValue};
+use sovereign_rs::config::{Settings, SourceConfig, TemplateContextConfig, XdsTemplate};
+use sovereign_rs::context::{poll_context, DeserializeAs};
 use sovereign_rs::sources::{
     poll_sources, poll_sources_into_buckets, InstancesPackage, SourceDest,
 };
+use sovereign_rs::types::DiscoveryRequest;
+use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::sync::watch::{self, Receiver, Sender};
 use tokio::time::{sleep, Duration};
-
-use sovereign_rs::config::{Settings, SourceConfig, TemplateContextConfig};
-use sovereign_rs::types::{DiscoveryRequest, DiscoveryResponse};
 
 struct State<'a> {
     instances: Option<Receiver<Vec<InstancesPackage>>>,
     context: Option<Receiver<JinjaValue>>,
+    templates: DashMap<String, XdsTemplate>,
     env: Environment<'a>,
 }
 
 impl<'a> State<'a> {
-    // TODO: figure out:
-    // 1. How to choose json OR yaml
-    // 2. How to choose maybe a python script, which passes in context to a method
-    fn template(&'a self, envoy_version: String, resource_type: &str) -> Option<Template<'a, 'a>> {
+    fn template(&'a self, envoy_version: String, resource_type: &str) -> Option<XdsTemplate> {
         // Incrementally walk the semantic version to find a template
         let mut octets = envoy_version.split('.').collect::<Vec<_>>();
         while !octets.is_empty() {
             let prefix = octets.join(".");
             let name = format!("{}/{}", prefix, resource_type);
-            if let Ok(template) = self.env.get_template(&name) {
-                return Some(template);
+            if let Some(template) = self.templates.get(&name) {
+                return Some(template.clone());
             }
             octets.pop();
         }
         // Try the default template
         let name = format!("default/{}", resource_type);
-        if let Ok(template) = self.env.get_template(&name) {
-            return Some(template);
+        if let Some(template) = self.templates.get(&name) {
+            return Some(template.clone());
         }
         None
     }
@@ -54,7 +52,7 @@ macro_rules! measure {
         let start = std::time::Instant::now();
         let result = $block;
         let duration = start.elapsed();
-        println!("{}: Time elapsed: {:?}", $name, duration);
+        println!("{} ({:?})", $name, duration);
         result
     }};
 }
@@ -63,7 +61,7 @@ async fn discovery(
     Path((_api_version, resource)): Path<(String, String)>,
     Json(payload): Json<DiscoveryRequest>,
     Extension(state): Extension<Arc<State<'_>>>,
-) -> Result<Json<DiscoveryResponse>, impl IntoResponse> {
+) -> Result<Response<Full<Bytes>>, impl IntoResponse> {
     let (_, resource_type) = resource.split_once(':').unwrap();
     let version = measure!("envoy version", { payload.envoy_version() });
     let templ = measure!("template", { state.template(version, resource_type) });
@@ -94,38 +92,68 @@ async fn discovery(
         if let Some(c) = &state.context {
             ctx = c.borrow().clone();
         }
-        let content = measure!("render", {
-            let result = template.render(context! {
-                instances => i,
-                discovery_request => payload,
-                ..ctx.clone()
-            });
-            match result {
-                Ok(text) => text,
-                Err(e) => {
-                    println!("{e}");
-                    return Err(Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body(format!("{ctx}"))
-                        .unwrap());
-                }
-            }
-        });
 
-        let deser = measure!("json", { serde_json::from_str(&content) });
-        match deser {
-            Ok(body) => {
-                let response = measure!("hash", { DiscoveryResponse::new(body) });
-                Ok(Json(response))
-            }
-            Err(e) => {
-                println!("Failed to deserialize content:");
-                for (idx, line) in content.split('\n').enumerate() {
-                    println!("{idx}: {line}");
+        let content = measure!(
+            "render",
+            match template.call_python {
+                Some(true) => template.call(context! {
+                        instances => i,
+                        discovery_request => payload,
+                        ..ctx
+                }),
+                _ => {
+                    let template_string = template.source().unwrap();
+                    let result = state.env.render_str(
+                        template_string.as_str(),
+                        context! {
+                            instances => i,
+                            discovery_request => payload,
+                            ..ctx
+                        },
+                    );
+                    match result {
+                        Ok(text) => text,
+                        Err(e) => {
+                            return Err(Response::builder()
+                                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                .body(format!("{e}"))
+                                .unwrap());
+                        }
+                    }
                 }
-                panic!("{e}")
             }
+        );
+
+        let hash = measure!("hashing", xxhash_rust::xxh64::xxh64(content.as_bytes(), 0));
+        if hash.to_string() == payload.version_info {
+            return Ok(Response::builder()
+                .status(StatusCode::NOT_MODIFIED)
+                .body(Full::from(""))
+                .unwrap());
         }
+
+        let body = measure!(
+            "deser",
+            match template.deserialize_as {
+                DeserializeAs::Json => {
+                    format!("{{\"version_info\": \"{hash}\", \"resources\": {content}}}")
+                }
+                DeserializeAs::Yaml => {
+                    let y: JsonValue = serde_yaml::from_str(&content).unwrap();
+                    let res = serde_json::to_string(&y).unwrap();
+                    format!("{{\"version_info\": \"{hash}\", \"resources\": {res}}}")
+                }
+                DeserializeAs::Plaintext => {
+                    format!("{{\"version_info\": \"{hash}\", \"resources\": {content}}}")
+                }
+            }
+        );
+
+        Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/json")
+            .body(Full::from(body))
+            .unwrap())
     } else {
         Err(Response::builder()
             .status(StatusCode::NOT_FOUND)
@@ -200,18 +228,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         context_rx = Some(setup_context_channel(context_conf.clone()).await);
     }
 
-    let mut env = Environment::new();
+    let templates = DashMap::new();
     for template in settings.templates.iter() {
         let s = format!("Added template: {}", template.name());
         measure!(s.as_str(), {
-            env.add_template_owned(template.name(), template.source()?)?
+            templates.insert(template.name(), template.clone())
         });
     }
 
     let state = Arc::new(State {
         instances: sources_rx,
         context: context_rx,
-        env,
+        env: Environment::new(),
+        templates,
     });
 
     let app = Router::new()

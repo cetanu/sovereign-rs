@@ -60,8 +60,8 @@ struct Node {
 #[derive(Serialize, Deserialize)]
 pub struct DiscoveryRequest {
     node: Node,
-    version_info: String,
     resource_names: Vec<String>,
+    pub version_info: String,
 }
 
 impl DiscoveryRequest {

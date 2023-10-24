@@ -135,15 +135,13 @@ async fn discovery(
         let body = measure!(
             "deser",
             match template.deserialize_as {
-                DeserializeAs::Json => {
-                    format!("{{\"version_info\": \"{hash}\", \"resources\": {content}}}")
-                }
                 DeserializeAs::Yaml => {
                     let y: JsonValue = serde_yaml::from_str(&content).unwrap();
                     let res = serde_json::to_string(&y).unwrap();
                     format!("{{\"version_info\": \"{hash}\", \"resources\": {res}}}")
                 }
-                DeserializeAs::Plaintext => {
+                // JSON / Plaintext are chucked straight in
+                _ => {
                     format!("{{\"version_info\": \"{hash}\", \"resources\": {content}}}")
                 }
             }

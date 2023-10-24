@@ -22,6 +22,15 @@ pub struct XdsTemplate {
     pub call_python: Option<bool>,
 }
 
+const PY_BOILETPLATE: &str = r#"
+import json
+
+def main(kw):
+    kwargs = json.loads(kw)
+    result = [r for r in call(**kwargs)]
+    return json.dumps(result)
+"#;
+
 impl XdsTemplate {
     pub fn name(&self) -> String {
         format!("{}/{}", self.envoy_version, self.resource_type)
@@ -39,13 +48,13 @@ impl XdsTemplate {
         Python::with_gil(|py| {
             let module = PyModule::from_code(
                 py,
-                &self.source().unwrap(),
+                &format!("{}\n{}", PY_BOILETPLATE, &self.source().unwrap()),
                 &self.path.to_string_lossy(),
                 "template",
             )
             .expect("Could not parse python code");
             module
-                .getattr("call")
+                .getattr("main")
                 .expect("No 'call' function in python template")
                 .call1((serde_json::to_string(&kwargs).unwrap(),))
                 .expect("Template function failed")

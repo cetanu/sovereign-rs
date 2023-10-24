@@ -1,4 +1,3 @@
-import json
 import envoy_data_plane.envoy.api.v2 as envoy
 
 
@@ -23,7 +22,6 @@ route_config = envoy.RouteConfiguration(
 )
 
 
-def call(things):
-    args = json.loads(things)
-    print(args.keys())
-    return json.dumps([route_config.to_dict()])
+def call(discovery_request, **kwargs):
+    print(kwargs.keys())
+    yield route_config.to_dict()

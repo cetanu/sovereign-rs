@@ -1,14 +1,13 @@
 use pyo3::prelude::*;
-use reqwest::blocking::Client;
-use serde::Deserialize;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use std::collections::HashMap;
-use std::error::Error;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::path::PathBuf;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(tag = "type", content = "config", rename_all = "lowercase")]
 pub enum Source {
     Inline { data: JsonValue },
@@ -17,8 +16,22 @@ pub enum Source {
     File { path: PathBuf },
 }
 
+/// Tag that indicates which cluster a bundle of instances is intended for
+#[derive(Clone, Serialize)]
+pub enum SourceDest {
+    Any,
+    Match(String),
+}
+
+/// A pre-coalesced group of instances, for one particular cluster
+#[derive(Clone, Serialize)]
+pub struct InstancesPackage {
+    pub dest: SourceDest,
+    pub instances: JsonValue,
+}
+
 impl Source {
-    pub fn get(&self) -> Result<String, Box<dyn Error>> {
+    pub fn get(&self) -> anyhow::Result<String> {
         match self {
             Source::Inline { data } => Ok(data.to_string()),
             Source::Python { code } => Ok(Python::with_gil(|py| {
@@ -33,8 +46,17 @@ impl Source {
                     .expect("Could not parse main function return value as a string")
             })),
             Source::Http { url } => {
-                let client = Client::new();
-                Ok(client.get(url).send()?.text()?)
+                let u = url.clone();
+                let future = async {
+                    let client = Client::new();
+                    client.get(u).send().await.unwrap().text().await.unwrap()
+                };
+                let handle = tokio::task::spawn(future);
+                let result = tokio::task::block_in_place(|| {
+                    let runtime = tokio::runtime::Handle::current();
+                    runtime.block_on(handle)
+                });
+                Ok(result.unwrap())
             }
             Source::File { path } => {
                 let file = std::fs::File::open(path)?;
@@ -47,21 +69,68 @@ impl Source {
     }
 }
 
-pub fn poll_sources(sources: &[Source]) -> JsonValue {
-    let mut ret = json! {[]};
+pub fn poll_sources(sources: &[Source]) -> anyhow::Result<Vec<InstancesPackage>> {
+    let mut source_data = json! {[]};
+    let borrow = source_data.as_array_mut().unwrap();
     for source in sources.iter() {
-        let val = source.get();
-        if let Ok(s) = val {
-            if let Ok(json_value) = serde_json::from_str::<JsonValue>(&s) {
-                if let Some(s) = ret.as_array_mut() {
-                    if let Some(instances) = json_value.as_array() {
-                        s.extend(instances.clone());
+        let data = source.get()?;
+        let json_value = serde_json::from_str::<JsonValue>(&data)?;
+        let instances = json_value.as_array().unwrap();
+        borrow.extend(instances.clone());
+    }
+    Ok(vec![InstancesPackage {
+        dest: SourceDest::Any,
+        instances: source_data,
+    }])
+}
+
+pub fn poll_sources_into_buckets(
+    sources: &[Source],
+    source_match_key: &str,
+) -> anyhow::Result<Vec<InstancesPackage>> {
+    let mut ret = vec![];
+    let mut buckets = HashMap::new();
+    for source in sources.iter() {
+        let data = source.get()?;
+        let json_value = serde_json::from_str::<JsonValue>(&data)?;
+        let instances = json_value.as_array().unwrap();
+
+        for instance in instances {
+            match instance.get(source_match_key) {
+                // A list of string values is supported
+                Some(JsonValue::Array(array)) => {
+                    // Add a copy of the instance to every bucket
+                    for bucket in array {
+                        if let JsonValue::String(matched_key) = bucket {
+                            buckets
+                                .entry(matched_key.to_string())
+                                .or_insert(json! {[]})
+                                .as_array_mut()
+                                .unwrap()
+                                .push(instance.clone());
+                        } else {
+                            continue;
+                        }
                     }
                 }
+                // or a singular string
+                Some(JsonValue::String(key)) => {
+                    buckets
+                        .entry(key.to_string())
+                        .or_insert(json! {[]})
+                        .as_array_mut()
+                        .unwrap()
+                        .push(instance.clone());
+                }
+                _ => continue,
             }
-        } else {
-            panic!("Failed to get from source");
         }
     }
-    ret
+    for (bucket, instances) in buckets.into_iter() {
+        ret.push(InstancesPackage {
+            dest: SourceDest::Match(bucket),
+            instances,
+        });
+    }
+    Ok(ret)
 }

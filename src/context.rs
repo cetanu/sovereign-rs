@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::Read;
 use std::str::FromStr;
 
 use minijinja::Value as JinjaValue;
@@ -11,17 +11,7 @@ use serde::{de, Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use serde_json::Value as YamlValue;
 
-#[derive(Debug)]
-pub enum Error {
-    FileReadError(io::Error),
-    HttpError(reqwest::Error),
-    JsonParseError(serde_json::Error),
-    YamlParseError(serde_yaml::Error),
-    #[cfg(feature = "s3")]
-    S3Error(rusoto_core::RusotoError<rusoto_s3::GetObjectError>),
-}
-
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 #[serde(rename_all = "lowercase")]
 enum Format {
     Json,
@@ -29,7 +19,7 @@ enum Format {
     Plaintext,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 #[serde(untagged)]
 pub enum Parsed {
     Text(String),
@@ -45,7 +35,7 @@ impl From<Parsed> for JinjaValue {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 #[serde(rename_all = "lowercase")]
 enum DataSource {
     File {
@@ -85,7 +75,7 @@ where
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub struct TemplateContext {
     deserialize_as: Format,
@@ -93,26 +83,36 @@ pub struct TemplateContext {
 }
 
 impl TemplateContext {
-    pub fn load(&self) -> Result<Parsed, Error> {
+    pub fn load(&self) -> anyhow::Result<Parsed> {
         let data: Vec<u8> = match &self.data_source {
             DataSource::File { path } => {
-                let mut file = File::open(path).map_err(Error::FileReadError)?;
+                let mut file = File::open(path)?;
                 let mut buffer = Vec::new();
-                file.read_to_end(&mut buffer)
-                    .map_err(Error::FileReadError)?;
+                file.read_to_end(&mut buffer)?;
                 buffer
             }
             DataSource::Http { url, headers } => {
-                let client = reqwest::blocking::Client::new();
-                let mut response = client
-                    .get(url)
-                    .headers(headers.clone().unwrap_or_default())
-                    .send()
-                    .map_err(Error::HttpError)?;
+                let u = url.clone();
+                let h = headers.clone();
+                let future = async {
+                    let client = reqwest::Client::new();
+                    client
+                        .get(u)
+                        .headers(h.unwrap_or_default())
+                        .send()
+                        .await
+                        .unwrap()
+                        .text()
+                        .await
+                        .unwrap()
+                };
+                let handle = tokio::task::spawn(future);
+                let result = tokio::task::block_in_place(|| {
+                    let runtime = tokio::runtime::Handle::current();
+                    runtime.block_on(handle)
+                });
 
-                let mut buffer = Vec::new();
-                response.copy_to(&mut buffer).unwrap();
-                buffer
+                result.unwrap().as_bytes().to_vec()
             }
             #[cfg(feature = "s3")]
             DataSource::S3 {
@@ -120,41 +120,34 @@ impl TemplateContext {
                 key,
                 region,
             } => {
-                let s3_client = rusoto_s3::S3Client::new(
-                    rusoto_core::Region::from_str(region.as_str())
-                        .expect("Invalid region specified for S3 bucket"),
-                );
+                let s3_client =
+                    rusoto_s3::S3Client::new(rusoto_core::Region::from_str(region.as_str())?);
                 let get_req = rusoto_s3::GetObjectRequest {
                     bucket: bucket.clone(),
                     key: key.clone(),
                     ..Default::default()
                 };
-                let rt = tokio::runtime::Runtime::new().unwrap();
+                let rt = tokio::runtime::Runtime::new()?;
                 let future = s3_client.get_object(get_req);
-                let result = rt.block_on(future).map_err(Error::S3Error)?;
+                let result = rt.block_on(future)?;
                 let stream = result.body.unwrap();
                 let mut buffer = Vec::new();
-                stream
-                    .into_blocking_read()
-                    .read_to_end(&mut buffer)
-                    .map_err(Error::FileReadError)?;
+                stream.into_blocking_read().read_to_end(&mut buffer)?;
                 buffer
             }
         };
 
         let parsed = match &self.deserialize_as {
             Format::Json => {
-                let json: JsonValue =
-                    serde_json::from_slice(&data).map_err(Error::JsonParseError)?;
+                let json: JsonValue = serde_json::from_slice(&data)?;
                 Parsed::Structured(json)
             }
             Format::Yaml => {
-                let yaml: YamlValue =
-                    serde_yaml::from_slice(&data).map_err(Error::YamlParseError)?;
+                let yaml: YamlValue = serde_yaml::from_slice(&data)?;
                 Parsed::Structured(yaml)
             }
             Format::Plaintext => {
-                let text = String::from_utf8(data).unwrap();
+                let text = String::from_utf8(data)?;
                 Parsed::Text(text)
             }
         };

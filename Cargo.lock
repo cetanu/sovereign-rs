@@ -2038,6 +2038,7 @@ dependencies = [
 name = "sovereign-rs"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "axum 0.5.17",
  "config",
  "dashmap",

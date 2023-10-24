@@ -65,11 +65,11 @@ pub struct DiscoveryRequest {
 }
 
 impl DiscoveryRequest {
-    pub fn new() -> Self {
+    pub fn new(cluster: String) -> Self {
         Self {
             node: Node {
                 id: None,
-                cluster: "example".to_string(),
+                cluster,
                 metadata: HashMap::new(),
                 build_version: Some("1.25.0".to_string()),
                 locality: None,
@@ -87,5 +87,8 @@ impl DiscoveryRequest {
         } else {
             panic!("No envoy version")
         }
+    }
+    pub fn cluster(&self) -> &str {
+        &self.node.cluster
     }
 }

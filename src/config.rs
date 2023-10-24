@@ -7,8 +7,9 @@ use std::env;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::path::PathBuf;
+use tokio::time::Duration;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct XdsTemplate {
     path: PathBuf,
     envoy_version: String,
@@ -29,11 +30,49 @@ impl XdsTemplate {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
+pub struct NodeMatching {
+    pub source_key: String,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct TemplateContextConfig {
+    pub items: HashMap<String, TemplateContext>,
+    #[serde(
+        deserialize_with = "deserialize_duration",
+        default = "default_duration"
+    )]
+    pub interval: Duration,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct SourceConfig {
+    pub items: Vec<Source>,
+    #[serde(
+        deserialize_with = "deserialize_duration",
+        default = "default_duration"
+    )]
+    pub interval: Duration,
+}
+
+#[derive(Deserialize, Clone)]
 pub struct Settings {
     pub templates: Vec<XdsTemplate>,
-    pub sources: Vec<Source>,
-    pub template_context: HashMap<String, TemplateContext>,
+    pub sources: Option<SourceConfig>,
+    pub template_context: Option<TemplateContextConfig>,
+    pub node_matching: Option<NodeMatching>,
+}
+
+fn deserialize_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let secs = u64::deserialize(deserializer)?;
+    Ok(Duration::from_secs(secs))
+}
+
+fn default_duration() -> Duration {
+    Duration::from_secs(30)
 }
 
 impl Settings {

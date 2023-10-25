@@ -8,10 +8,11 @@ use std::io::BufReader;
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize, Clone)]
-#[serde(tag = "type", content = "config", rename_all = "lowercase")]
+#[serde(tag = "type", content = "config", rename_all = "snake_case")]
 pub enum Source {
     Inline { data: JsonValue },
-    Python { code: String },
+    PythonInline { code: String },
+    PythonScript { path: PathBuf },
     Http { url: String },
     File { path: PathBuf },
 }
@@ -30,21 +31,34 @@ pub struct InstancesPackage {
     pub instances: JsonValue,
 }
 
+fn call_python_code(code: &str) -> String {
+    Python::with_gil(|py| {
+        let module = PyModule::from_code(py, code, "file.py", "module")
+            .expect("Could not parse python code");
+        module
+            .getattr("main")
+            .expect("No main function in python code")
+            .call0()
+            .expect("Main function failed")
+            .extract::<String>()
+            .expect("Could not parse main function return value as a string")
+    })
+}
+
+fn read_file(path: &PathBuf) -> anyhow::Result<String> {
+    let file = std::fs::File::open(path)?;
+    let mut reader = BufReader::new(file);
+    let mut content = String::new();
+    reader.read_to_string(&mut content)?;
+    Ok(content)
+}
+
 impl Source {
     pub fn get(&self) -> anyhow::Result<String> {
         match self {
             Source::Inline { data } => Ok(data.to_string()),
-            Source::Python { code } => Ok(Python::with_gil(|py| {
-                let module = PyModule::from_code(py, code, "file.py", "module")
-                    .expect("Could not parse python code");
-                module
-                    .getattr("main")
-                    .expect("No main function in python code")
-                    .call0()
-                    .expect("Main function failed")
-                    .extract::<String>()
-                    .expect("Could not parse main function return value as a string")
-            })),
+            Source::PythonInline { code } => Ok(call_python_code(code)),
+            Source::PythonScript { path } => Ok(call_python_code(&read_file(path)?)),
             Source::Http { url } => {
                 let u = url.clone();
                 let future = async {
@@ -58,13 +72,7 @@ impl Source {
                 });
                 Ok(result.unwrap())
             }
-            Source::File { path } => {
-                let file = std::fs::File::open(path)?;
-                let mut reader = BufReader::new(file);
-                let mut content = String::new();
-                reader.read_to_string(&mut content)?;
-                Ok(content)
-            }
+            Source::File { path } => read_file(path),
         }
     }
 }

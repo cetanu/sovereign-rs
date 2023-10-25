@@ -59,6 +59,8 @@ fn setup_sources_channel(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    pyo3::prepare_freethreaded_python();
+
     let settings = match Settings::new() {
         Ok(s) => s,
         Err(e) => {

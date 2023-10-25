@@ -91,11 +91,13 @@ pub async fn discovery(
         let text = measure!(
             "render",
             match template.call_python {
-                Some(true) => template.call(context! {
-                        instances => i,
-                        discovery_request => payload,
-                        ..ctx
-                }),
+                Some(true) => template
+                    .call(context! {
+                            instances => i,
+                            discovery_request => payload,
+                            ..ctx
+                    })
+                    .unwrap(),
                 _ => {
                     let template_string = template.source().unwrap();
                     let result = state.env.render_str(

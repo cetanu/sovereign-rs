@@ -31,17 +31,10 @@ pub struct InstancesPackage {
     pub instances: JsonValue,
 }
 
-fn call_python_code(code: &str) -> String {
-    Python::with_gil(|py| {
-        let module = PyModule::from_code(py, code, "file.py", "module")
-            .expect("Could not parse python code");
-        module
-            .getattr("main")
-            .expect("No main function in python code")
-            .call0()
-            .expect("Main function failed")
-            .extract::<String>()
-            .expect("Could not parse main function return value as a string")
+fn call_python_code(code: &str) -> anyhow::Result<String> {
+    Python::with_gil(|py| -> anyhow::Result<String> {
+        let module = PyModule::from_code(py, code, "file.py", "module")?;
+        Ok(module.getattr("main")?.call0()?.extract::<String>()?)
     })
 }
 
@@ -57,8 +50,8 @@ impl Source {
     pub fn get(&self) -> anyhow::Result<String> {
         match self {
             Source::Inline { data } => Ok(data.to_string()),
-            Source::PythonInline { code } => Ok(call_python_code(code)),
-            Source::PythonScript { path } => Ok(call_python_code(&read_file(path)?)),
+            Source::PythonInline { code } => call_python_code(code),
+            Source::PythonScript { path } => call_python_code(&read_file(path)?),
             Source::Http { url } => {
                 let u = url.clone();
                 let future = async {

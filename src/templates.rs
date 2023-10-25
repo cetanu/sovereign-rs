@@ -38,22 +38,18 @@ impl XdsTemplate {
         Ok(content)
     }
 
-    pub fn call(&self, kwargs: JinjaValue) -> String {
-        Python::with_gil(|py| {
+    pub fn call(&self, kwargs: JinjaValue) -> anyhow::Result<String> {
+        Python::with_gil(|py| -> anyhow::Result<String> {
             let module = PyModule::from_code(
                 py,
                 &format!("{}\n{}", PY_BOILETPLATE, &self.source().unwrap()),
                 &self.path.to_string_lossy(),
                 "template",
-            )
-            .expect("Could not parse python code");
-            module
-                .getattr("main")
-                .expect("No 'call' function in python template")
-                .call1((serde_json::to_string(&kwargs).unwrap(),))
-                .expect("Template function failed")
-                .extract::<String>()
-                .expect("Could not parse call function return value as a string")
+            )?;
+            Ok(module
+                .getattr("main")?
+                .call1((serde_json::to_string(&kwargs).unwrap(),))?
+                .extract::<String>()?)
         })
     }
 }

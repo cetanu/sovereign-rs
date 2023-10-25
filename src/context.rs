@@ -118,7 +118,6 @@ impl TemplateContext {
                     let runtime = tokio::runtime::Handle::current();
                     runtime.block_on(handle)
                 });
-
                 result.unwrap().as_bytes().to_vec()
             }
             #[cfg(feature = "s3")]

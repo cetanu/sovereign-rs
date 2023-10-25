@@ -65,18 +65,18 @@ pub struct DiscoveryRequest {
 }
 
 impl DiscoveryRequest {
-    pub fn new(cluster: String) -> Self {
+    pub fn new(cluster: String, version: String, resource_names: Vec<String>) -> Self {
         Self {
             node: Node {
                 id: None,
                 cluster,
                 metadata: HashMap::new(),
-                build_version: Some("1.25.0".to_string()),
+                build_version: Some(version),
                 locality: None,
                 user_agent_build_version: None,
             },
             version_info: "0".to_string(),
-            resource_names: vec![],
+            resource_names,
         }
     }
     pub fn envoy_version(&self) -> String {

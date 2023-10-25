@@ -15,6 +15,7 @@ use sovereign_rs::sources::{
 use sovereign_rs::types::DiscoveryRequest;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::signal::ctrl_c;
 use tokio::sync::watch::{self, Receiver, Sender};
 use tokio::time::{sleep, Duration};
 
@@ -26,7 +27,7 @@ struct State<'a> {
 }
 
 impl<'a> State<'a> {
-    fn template(&'a self, envoy_version: String, resource_type: &str) -> Option<XdsTemplate> {
+    fn template(&'a self, envoy_version: &str, resource_type: &str) -> Option<XdsTemplate> {
         // Incrementally walk the semantic version to find a template
         let mut octets = envoy_version.split('.').collect::<Vec<_>>();
         while !octets.is_empty() {
@@ -43,6 +44,37 @@ impl<'a> State<'a> {
             return Some(template.clone());
         }
         None
+    }
+}
+
+fn intercept_yaml_error(message: &str, content: &str) {
+    if let Some(line_start) = message.find("line ") {
+        if let Some(column_start) = message.find("column ") {
+            let line_str = &message[line_start + 5..column_start - 1];
+            let column_str = &message[column_start + 7..];
+
+            let line: usize = line_str.parse().unwrap();
+            let column: usize = column_str.parse().unwrap();
+
+            let start = if line >= 5 { line - 5 } else { 1 };
+            let end = line + 5;
+
+            let lines = content
+                .split("\n")
+                .into_iter()
+                .enumerate()
+                // Start index from 1
+                .map(|(i, txt)| (i + 1, txt));
+
+            for (idx, text) in lines {
+                if idx >= start && idx <= end {
+                    println!("{}: {}", idx, text);
+                    if idx == line {
+                        println!("{}{}", " ".repeat(column + 3), "^");
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -64,7 +96,7 @@ async fn discovery(
 ) -> Result<Response<Full<Bytes>>, impl IntoResponse> {
     let (_, resource_type) = resource.split_once(':').unwrap();
     let version = measure!("envoy version", { payload.envoy_version() });
-    let templ = measure!("template", { state.template(version, resource_type) });
+    let templ = measure!("template", { state.template(&version, resource_type) });
     let node_key = payload.cluster();
 
     if let Some(template) = templ {
@@ -136,7 +168,13 @@ async fn discovery(
             "deser",
             match template.deserialize_as {
                 DeserializeAs::Yaml => {
-                    let y: JsonValue = serde_yaml::from_str(&content).unwrap();
+                    let y: JsonValue = match serde_yaml::from_str(&content) {
+                        Ok(yombl) => yombl,
+                        Err(e) => {
+                            intercept_yaml_error(&e.to_string(), &content);
+                            panic!("{e}");
+                        }
+                    };
                     let res = serde_json::to_string(&y).unwrap();
                     format!("{{\"version_info\": \"{hash}\", \"resources\": {res}}}")
                 }
@@ -155,7 +193,14 @@ async fn discovery(
     } else {
         Err(Response::builder()
             .status(StatusCode::NOT_FOUND)
-            .body("No configuration found for this Envoy version + resource type".to_string())
+            .body(format!(
+                "No configuration found for {resource_type}:{version}. Full list: {:?}",
+                state
+                    .templates
+                    .iter()
+                    .map(|i| i.key().to_string())
+                    .collect::<Vec<String>>()
+            ))
             .unwrap())
     }
 }
@@ -248,6 +293,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = SocketAddr::from(([0, 0, 0, 0], 8070));
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
+        .with_graceful_shutdown(async {
+            ctrl_c().await.unwrap();
+            println!("Shutting down gracefully")
+        })
         .await?;
 
     Ok(())

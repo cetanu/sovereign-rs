@@ -1,6 +1,6 @@
 use clap::Parser;
 use reqwest::Client;
-use sovereign_rs::types::DiscoveryRequest;
+use sovereign_rs::envoy_types::DiscoveryRequest;
 
 #[derive(Parser, Debug)]
 struct Args {

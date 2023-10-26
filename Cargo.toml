@@ -2,6 +2,12 @@
 name = "sovereign-rs"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Envoy JSON-REST XDS Control-Plane"
+authors = ["Vasilios Syrakis <vsyrakis@protonmail.com>"]
+readme = "README.md"
+repository = "https://github.com/cetanu/sovereign-rs"
+keywords = ["xds", "control plane", "envoy"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

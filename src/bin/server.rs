@@ -12,6 +12,8 @@ use std::sync::Arc;
 use tokio::signal::ctrl_c;
 use tokio::sync::watch::{self, Receiver};
 use tokio::time::{sleep, Duration};
+use tracing::debug;
+use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 fn setup_context_channel(config: TemplateContextConfig) -> Receiver<JinjaValue> {
     let (tx, rx) = watch::channel(poll_context(&config.items));
@@ -61,6 +63,17 @@ fn setup_sources_channel(
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     pyo3::prepare_freethreaded_python();
 
+    FmtSubscriber::builder()
+        .with_env_filter(EnvFilter::from_default_env())
+        .event_format(
+            tracing_subscriber::fmt::format()
+                .with_file(true)
+                .with_line_number(true),
+        )
+        .compact()
+        .json()
+        .init();
+
     let settings = match Settings::new() {
         Ok(s) => s,
         Err(e) => {
@@ -68,20 +81,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    debug!(target: "sovereign_rs", "Setting up sources channel");
     let mut sources_rx = None;
     if let Some(source_conf) = &settings.sources {
         sources_rx = Some(setup_sources_channel(settings.clone(), source_conf.clone()));
     }
+    debug!(target: "sovereign_rs", "Completed setting up sources channel");
 
+    debug!(target: "sovereign_rs", "Setting up context channel");
     let mut context_rx = None;
     if let Some(context_conf) = &settings.template_context {
         context_rx = Some(setup_context_channel(context_conf.clone()));
     }
+    debug!(target: "sovereign_rs", "Completed setting up context channel");
 
+    debug!(target: "sovereign_rs", "Setting up templates");
     let templates = DashMap::new();
     for template in settings.templates.iter() {
         templates.insert(template.name(), template.clone());
     }
+    debug!(target: "sovereign_rs", "Completed setting up templates");
 
     let state = Arc::new(State {
         instances: sources_rx,
@@ -94,12 +113,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/:version/*resource", post(discovery))
         .layer(Extension(state));
 
+    debug!(target: "sovereign_rs", "Starting server");
     let addr = SocketAddr::from(([0, 0, 0, 0], 8070));
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .with_graceful_shutdown(async {
             ctrl_c().await.unwrap();
-            println!("Shutting down gracefully")
+            debug!(target: "sovereign_rs", "Shutting down gracefully")
         })
         .await?;
 

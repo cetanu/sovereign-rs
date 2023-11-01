@@ -49,18 +49,24 @@ struct Locality {
 
 #[derive(Serialize, Deserialize)]
 struct Node {
+    #[serde(skip_serializing_if = "Option::is_none")]
     id: Option<String>,
     cluster: String,
     metadata: HashMap<String, JsonValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     build_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     locality: Option<Locality>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     user_agent_build_version: Option<BuildVersion>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct DiscoveryRequest {
     node: Node,
+    #[serde(skip_serializing_if = "Option::is_none")]
     resource_names: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub version_info: Option<String>,
 }
 

@@ -60,12 +60,12 @@ struct Node {
 #[derive(Serialize, Deserialize)]
 pub struct DiscoveryRequest {
     node: Node,
-    resource_names: Vec<String>,
+    resource_names: Option<Vec<String>>,
     pub version_info: String,
 }
 
 impl DiscoveryRequest {
-    pub fn new(cluster: String, version: String, resource_names: Vec<String>) -> Self {
+    pub fn new(cluster: String, version: String, resource_names: Option<Vec<String>>) -> Self {
         Self {
             node: Node {
                 id: None,
@@ -90,5 +90,8 @@ impl DiscoveryRequest {
     }
     pub fn cluster(&self) -> &str {
         &self.node.cluster
+    }
+    pub fn resource_names(&self) -> Vec<String> {
+        self.resource_names.to_owned().unwrap_or_default()
     }
 }

@@ -64,10 +64,11 @@ pub async fn discovery(
     let service_cluster = payload.cluster();
 
     info!(
-        api_version = %api_version,
         resource_type = %resource_type,
+        resource_names = ?payload.resource_names(),
+        service_cluster = %service_cluster,
+        api_version = %api_version,
         version = %version,
-        service_cluster = %service_cluster
     );
 
     if let Some(template) = templ {

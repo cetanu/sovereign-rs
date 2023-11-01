@@ -10,8 +10,8 @@ struct Args {
     #[arg(long, default_value = "commercial_development_customer_shared_1")]
     service_cluster: String,
 
-    #[arg(long, value_delimiter = ',', default_value = "")]
-    resource_names: Vec<String>,
+    #[arg(long, value_delimiter = ',')]
+    resource_names: Option<Vec<String>>,
 
     #[arg(long, default_value = "1.25.0")]
     envoy_version: String,

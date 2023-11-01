@@ -52,6 +52,9 @@ enum DataSource {
         #[serde(deserialize_with = "deserialize_headermap")]
         headers: Option<HeaderMap>,
     },
+    Env {
+        variable: String,
+    },
     #[cfg(feature = "s3")]
     S3 {
         bucket: String,
@@ -98,6 +101,10 @@ impl TemplateContext {
                 file.read_to_end(&mut buffer)?;
                 buffer
             }
+            DataSource::Env { variable } => std::env::var(variable)
+                .expect("Failed to obtain env var: {variable}")
+                .as_bytes()
+                .to_vec(),
             DataSource::Http { url, headers } => {
                 let u = url.clone();
                 let h = headers.clone();

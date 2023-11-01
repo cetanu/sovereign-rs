@@ -208,3 +208,7 @@ fn intercept_yaml_error(message: &str, content: &str) {
         }
     }
 }
+
+pub async fn healthcheck() -> String {
+    "OK".to_string()
+}

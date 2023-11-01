@@ -1,10 +1,10 @@
 use axum::extract::Extension;
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::Router;
 use clap::Parser;
 use dashmap::DashMap;
 use minijinja::{Environment, Value as JinjaValue};
-use sovereign_rs::app::{discovery, State};
+use sovereign_rs::app::{discovery, healthcheck, State};
 use sovereign_rs::config::{Settings, SourceConfig, TemplateContextConfig};
 use sovereign_rs::context::poll_context;
 use sovereign_rs::sources::{poll_sources, poll_sources_into_buckets, InstancesPackage};
@@ -118,6 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let app = Router::new()
+        .route("/healthcheck", get(healthcheck))
         .route("/:version/*resource", post(discovery))
         .layer(Extension(state));
 

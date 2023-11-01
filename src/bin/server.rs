@@ -1,12 +1,14 @@
 use axum::extract::Extension;
 use axum::routing::post;
 use axum::Router;
+use clap::Parser;
 use dashmap::DashMap;
 use minijinja::{Environment, Value as JinjaValue};
 use sovereign_rs::app::{discovery, State};
 use sovereign_rs::config::{Settings, SourceConfig, TemplateContextConfig};
 use sovereign_rs::context::poll_context;
 use sovereign_rs::sources::{poll_sources, poll_sources_into_buckets, InstancesPackage};
+use std::net::IpAddr;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::signal::ctrl_c;
@@ -14,6 +16,15 @@ use tokio::sync::watch::{self, Receiver};
 use tokio::time::{sleep, Duration};
 use tracing::debug;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
+
+#[derive(Parser, Debug)]
+struct Args {
+    #[clap(long, default_value = "0.0.0.0", env = "SOVEREIGN_HOST")]
+    pub listen_address: IpAddr,
+
+    #[clap(long, default_value_t = 8080, env = "SOVEREIGN_PORT")]
+    pub listen_port: u16,
+}
 
 fn setup_context_channel(config: TemplateContextConfig) -> Receiver<JinjaValue> {
     let (tx, rx) = watch::channel(poll_context(&config.items));
@@ -61,6 +72,7 @@ fn setup_sources_channel(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = Args::parse();
     pyo3::prepare_freethreaded_python();
 
     FmtSubscriber::builder()
@@ -110,7 +122,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(Extension(state));
 
     debug!(target: "sovereign_rs", "Starting server");
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8070));
+    let addr = SocketAddr::new(args.listen_address, args.listen_port);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .with_graceful_shutdown(async {

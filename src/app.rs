@@ -3,7 +3,7 @@ use crate::envoy_types::DiscoveryRequest;
 use crate::sources::{InstancesPackage, SourceDest};
 use crate::templates::XdsTemplate;
 use axum::body::{Bytes, Full};
-use axum::extract::{Extension, Path};
+use axum::extract::{Extension, Host, Path};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -57,6 +57,7 @@ pub async fn discovery(
     Path((api_version, resource)): Path<(String, String)>,
     Json(payload): Json<DiscoveryRequest>,
     Extension(state): Extension<Arc<State<'_>>>,
+    Host(host_header): Host,
 ) -> Result<Response<Full<Bytes>>, impl IntoResponse> {
     let (_, resource_type) = resource.split_once(':').unwrap();
     let version = measure!("envoy version", { payload.envoy_version() });
@@ -103,6 +104,7 @@ pub async fn discovery(
                 Some(true) => template
                     .call(context! {
                             instances => i,
+                            host_header => host_header,
                             discovery_request => payload,
                             ..ctx
                     })
@@ -113,6 +115,7 @@ pub async fn discovery(
                         template_string.as_str(),
                         context! {
                             instances => i,
+                            host_header => host_header,
                             discovery_request => payload,
                             ..ctx
                         },

@@ -65,11 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     FmtSubscriber::builder()
         .with_env_filter(EnvFilter::from_default_env())
-        .event_format(
-            tracing_subscriber::fmt::format()
-                .with_file(true)
-                .with_line_number(true),
-        )
+        .event_format(tracing_subscriber::fmt::format())
         .compact()
         .json()
         .init();

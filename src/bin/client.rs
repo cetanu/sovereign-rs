@@ -27,6 +27,7 @@ async fn main() {
         args.resource_names,
     );
     let client = Client::new();
+    println!("Getting response");
     let response = client
         .post(format!(
             "http://localhost:8070/v3/discovery:{resource_type}"
@@ -35,5 +36,6 @@ async fn main() {
         .send()
         .await
         .unwrap();
+    println!("{:?}", response);
     println!("{}", response.text().await.unwrap());
 }

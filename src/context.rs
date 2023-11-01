@@ -11,7 +11,7 @@ use serde::{de, Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use serde_json::Value as YamlValue;
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum DeserializeAs {
     Json,

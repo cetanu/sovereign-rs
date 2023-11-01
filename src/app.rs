@@ -12,6 +12,7 @@ use minijinja::{context, Environment, Value as JinjaValue};
 use serde_json::{json, Value as JsonValue};
 use std::sync::Arc;
 use tokio::sync::watch::Receiver;
+use tracing::info;
 
 #[macro_export]
 macro_rules! measure {
@@ -53,7 +54,7 @@ impl<'a> State<'a> {
 }
 
 pub async fn discovery(
-    Path((_api_version, resource)): Path<(String, String)>,
+    Path((api_version, resource)): Path<(String, String)>,
     Json(payload): Json<DiscoveryRequest>,
     Extension(state): Extension<Arc<State<'_>>>,
 ) -> Result<Response<Full<Bytes>>, impl IntoResponse> {
@@ -61,6 +62,13 @@ pub async fn discovery(
     let version = measure!("envoy version", { payload.envoy_version() });
     let templ = measure!("template", { state.template(&version, resource_type) });
     let service_cluster = payload.cluster();
+
+    info!(
+        api_version = %api_version,
+        resource_type = %resource_type,
+        version = %version,
+        service_cluster = %service_cluster
+    );
 
     if let Some(template) = templ {
         let mut i = json! {[]};

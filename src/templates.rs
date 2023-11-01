@@ -6,7 +6,7 @@ use std::io::prelude::*;
 use std::io::BufReader;
 use std::path::PathBuf;
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct XdsTemplate {
     path: PathBuf,
     envoy_version: String,

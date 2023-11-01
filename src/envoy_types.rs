@@ -61,7 +61,7 @@ struct Node {
 pub struct DiscoveryRequest {
     node: Node,
     resource_names: Option<Vec<String>>,
-    pub version_info: String,
+    pub version_info: Option<String>,
 }
 
 impl DiscoveryRequest {
@@ -75,7 +75,7 @@ impl DiscoveryRequest {
                 locality: None,
                 user_agent_build_version: None,
             },
-            version_info: "0".to_string(),
+            version_info: Some("0".to_string()),
             resource_names,
         }
     }

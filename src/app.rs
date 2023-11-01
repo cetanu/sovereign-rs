@@ -131,7 +131,7 @@ pub async fn discovery(
         );
 
         let hash = measure!("hashing", xxhash_rust::xxh64::xxh64(text.as_bytes(), 0));
-        if hash.to_string() == payload.version_info {
+        if hash.to_string() == payload.version_info.unwrap_or("0".to_string()) {
             return Ok(Response::builder()
                 .status(StatusCode::NOT_MODIFIED)
                 .body(Full::from(""))

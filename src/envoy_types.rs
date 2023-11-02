@@ -85,18 +85,25 @@ impl DiscoveryRequest {
             resource_names,
         }
     }
+
     pub fn envoy_version(&self) -> String {
         if let Some(v) = &self.node.build_version {
-            v.to_string()
+            if let Some(version) = v.split("/").into_iter().nth(1) {
+                return version.to_string();
+            } else {
+                panic!("Could not parse envoy build version: {v}")
+            }
         } else if let Some(v) = &self.node.user_agent_build_version {
             v.version.to_string()
         } else {
             panic!("No envoy version")
         }
     }
+
     pub fn cluster(&self) -> &str {
         &self.node.cluster
     }
+
     pub fn resource_names(&self) -> Vec<String> {
         self.resource_names.to_owned().unwrap_or_default()
     }
